@@ -34,15 +34,16 @@ function home(){clearInterval(timer);let h=`<div class="logo">GROVE ST. ACADEMY<
 for(const k of ["ar","en","ma"]){const s=SESSIONS[k],r=S[k];h+=`<button class="btn ${r&&r.end?"done":""}" onclick="start('${k}')">${s.icon} · ${s.name} — ${s.items.length} مهام<small>${r&&r.end?"خلصت ✓ "+score(k)+"% · اضغط للملخّص":"15 دقيقة · ابدأ المهمّة"}</small></button>`}
 if(["ar","en","ma"].some(k=>S[k]&&S[k].end))h+=`<button class="btn" style="border-color:var(--gold)" onclick="summary()">🏆 ملخّص كل المواضيع</button>`;$(h)}
 function score(k){const r=S[k];if(!r)return 0;const n=SESSIONS[k].items.length;return Math.round(100*r.ans.filter((a,i)=>a===SESSIONS[k].items[i].a).length/n)}
-function start(k){cur=k;if(S[k]&&S[k].end)return report(k);if(!S[k])S[k]={ans:[],t0:Date.now()};save();idx=S[k].ans.length;
-clearInterval(timer);timer=setInterval(()=>{left=LIM-Math.floor((Date.now()-S[cur].t0)/1000);const e=document.getElementById("tm");if(e)e.textContent=fmt(left);if(left<=0)finish()},1000);show()}
+function start(k){cur=k;if(S[k]&&S[k].end)return report(k);if(!S[k])S[k]={ans:[],used:0};if(S[k].used==null){S[k].used=0;delete S[k].t0}save();idx=S[k].ans.length;
+clearInterval(timer);timer=setInterval(()=>{if(document.hidden||cur!==k)return;S[k].used++;if(S[k].used%5==0)save();left=LIM-S[k].used;const e=document.getElementById("tm");if(e)e.textContent=fmt(left);if(left<=0)finish()},1000);show()}
+function reset(k){delete S[k];save();start(k)}
 const fmt=s=>s<=0?"0:00":Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
-function show(){const s=SESSIONS[cur],it=s.items[idx];if(!it)return finish();left=LIM-Math.floor((Date.now()-S[cur].t0)/1000);const d=s.ltr?"ltr":"";
+function show(){const s=SESSIONS[cur],it=s.items[idx];if(!it)return finish();left=LIM-(S[cur].used||0);const d=s.ltr?"ltr":"";
 $(`<div class="card"><div class="hud"><span>${s.name} · مهمّة ${idx+1}/${s.items.length}</span><span>⏱ <b id="tm">${fmt(left)}</b></span></div>
 <div class="bar"><i style="width:${100*idx/s.items.length}%"></i></div><span class="tag">${it.t}</span>
 ${it.ctx?`<div class="ctx ${d}">${it.ctx}</div>`:""}<div class="q ${d}">${it.q}</div>
 <div class="${d}">${it.o.map((o,i)=>`<button class="opt" id="o${i}" onclick="pick(${i})">${o}</button>`).join("")}</div><div id="fb"></div>
-<div class="src">المصدر: <bdi>${it.src}</bdi></div></div><button class="lnk" onclick="home()">↩ رجوع (التقدّم محفوظ)</button>`)}
+<div class="src">المصدر: <bdi>${it.src}</bdi></div></div><button class="lnk" onclick="clearInterval(timer);home()">↩ رجوع (التقدّم والوقت محفوظين)</button>`)}
 function pick(i){const it=SESSIONS[cur].items[idx];if(S[cur].ans.length>idx)return;S[cur].ans.push(i);save();
 document.querySelectorAll(".opt").forEach((b,j)=>{b.disabled=true;if(j===it.a)b.classList.add("ok");else if(j===i)b.classList.add("no")});
 const ok=i===it.a;document.getElementById("fb").innerHTML=`<div class="fb"><b style="color:${ok?"var(--lime)":"var(--red)"}">${ok?"MISSION PASSED! +10 RESPECT":"WASTED"}</b><br><span dir="auto" style="unicode-bidi:plaintext;display:block">${it.ex}</span></div><button class="btn" style="text-align:center" onclick="idx++;show()">التالي ←</button>`}
@@ -50,7 +51,7 @@ function finish(){clearInterval(timer);if(!S[cur].end){S[cur].end=Date.now();sav
 function topics(k){const m={};SESSIONS[k].items.forEach((it,i)=>{m[it.t]=m[it.t]||[0,0];m[it.t][1]++;if(S[k].ans[i]===it.a)m[it.t][0]++});return m}
 function rows(k){return Object.entries(topics(k)).map(([t,[c,n]])=>`<tr><td>${t}</td><td class="n" style="color:${c===n?"var(--lime)":c?"var(--gold)":"var(--red)"}">${c}/${n}</td></tr>`).join("")}
 function report(k){const s=SESSIONS[k],r=S[k],sc=score(k),un=s.items.length-r.ans.length;
-$(`<div class="card"><div class="logo" style="font-size:20px">${s.name} · RESULT</div><div class="big">${sc}%</div><div class="sub">الهدف 90+ · ${new Date(r.end).toLocaleDateString("ar")} ${un?"· "+un+" بدون جواب (انتهى الوقت)":""}</div><table>${rows(k)}</table><div class="sub" style="margin-top:12px">📸 صوّر الشاشة وابعتها لأبوك</div></div><button class="btn" style="text-align:center" onclick="home()">رجوع للخريطة</button>`)}
+$(`<div class="card"><div class="logo" style="font-size:20px">${s.name} · RESULT</div><div class="big">${sc}%</div><div class="sub">الهدف 90+ · ${new Date(r.end).toLocaleDateString("ar")} ${un?"· "+un+" بدون جواب (انتهى الوقت)":""}</div><table>${rows(k)}</table><div class="sub" style="margin-top:12px">📸 صوّر الشاشة وابعتها لأبوك</div></div><button class="btn" style="text-align:center" onclick="home()">رجوع للخريطة</button><button class="lnk" onclick="reset('${k}')">↻ إعادة الجلسة من جديد</button>`)}
 function summary(){let h=`<div class="card"><div class="logo" style="font-size:20px">البطل · STATS</div>`;for(const k of ["ar","en","ma"])if(S[k]&&S[k].end)h+=`<h3 style="color:var(--cyan);margin:14px 0 4px">${SESSIONS[k].name} — ${score(k)}%</h3><table>${rows(k)}</table>`;
 $(h+`<div class="sub" style="margin-top:12px">📸 صوّر الشاشة وابعتها لأبوك</div></div><button class="btn" style="text-align:center" onclick="home()">رجوع</button>`)}
 home();
