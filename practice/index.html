@@ -28,9 +28,9 @@ table{width:100%;border-collapse:collapse;font-size:14px}td{padding:7px 4px;bord
 .note{font-size:15px;color:var(--gold);text-align:center;margin:8px 0;line-height:1.5}
 bdi{unicode-bidi:isolate}
 bdi.math{display:block;direction:ltr;text-align:left;unicode-bidi:isolate;margin:6px 0;max-width:100%}
-</style></head><body><div class="wrap" id="app"></div><script src="engine.js?v=4"></script><script>
+</style></head><body><div class="wrap" id="app"></div><script src="engine.js?v=5"></script><script>
 const CFG=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));const CODE=CFG.c||"anon";
-const LM="hero_mastery_v1",LD="hero_day_v1",LIM=900;
+const LM="hero_mastery_v1",LD="hero_day_v1",CLOSE=22*3600;
 function loadJSON(key){try{const raw=localStorage.getItem(key);if(!raw)return null;return JSON.parse(raw)}catch(e){return null}}
 function validMastery(m){return !!(m&&typeof m==="object"&&m.topics&&typeof m.topics==="object"&&m.cards&&typeof m.cards==="object")}
 function validDay(d){return !!(d&&typeof d==="object"&&typeof d.date==="string"&&Array.isArray(d.ids)&&Array.isArray(d.r))}
@@ -41,13 +41,27 @@ function save(){try{localStorage.setItem(LM,JSON.stringify(M));localStorage.setI
 const $=x=>document.getElementById("app").innerHTML=x;
 const SUB={ar:"عربي",en:"English",ma:"رياضيات"},WHY={weak:"🎯 نقطة ضعف",review:"🔁 مراجعة",new:"✨ جديد"};
 const fmt=t=>Math.floor(t/60)+":"+String(t%60).padStart(2,"0");
+function jerusalemSec(d=new Date()){
+ const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(d);
+ const g=t=>parts.find(p=>p.type===t).value;
+ let h=+g("hour");if(h===24)h=0;
+ return h*3600+(+g("minute"))*60+(+g("second"));
+}
+function secsUntilClose(d=new Date()){return CLOSE-jerusalemSec(d)}
+function pastClose(d=new Date()){return secsUntilClose(d)<=0}
+function fmtLeft(sec){
+ sec=Math.max(0,Math.floor(sec));
+ const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;
+ const mm=String(m).padStart(2,"0"),ss=String(s).padStart(2,"0");
+ return h?h+":"+mm+":"+ss:m+":"+ss;
+}
 const bdi=s=>'<bdi dir="ltr">'+s+"</bdi>";
 const esc=s=>String(s).replace(/[&<>]/g,c=>c==="&"?"&amp;":c==="<"?"&lt;":"&gt;");
 function fresh(t){const mix=ENG.build(BANK,M,t,CODE);return{date:t,code:CODE,ids:mix.map(x=>[x.id,x.why]),i:0,r:[],xp:0,used:0}}
 function bindMix(){const byId=Object.fromEntries(BANK.map(x=>[x.id,x]));
  MIX=D.ids.filter(([id])=>byId[id]&&ENG.playable(byId[id])).map(([id,why])=>({...byId[id],why}));
  if(D.i>MIX.length)D.i=MIX.length}
-fetch("bank.json?v=4").then(r=>r.json()).then(b=>{BANK=b;init()}).catch(()=>$(`<div class="card"><div class="q">ما قدرنا نحمّل البطاقات. جرّب كمان مرّة.</div></div>`));
+fetch("bank.json?v=5").then(r=>r.json()).then(b=>{BANK=b;init()}).catch(()=>$(`<div class="card"><div class="q">ما قدرنا نحمّل البطاقات. جرّب كمان مرّة.</div></div>`));
 function init(){const t=ENG.today();let rollover=null;
  if(!validDay(D)||D.code!==CODE||D.date!==t){
   if(validDay(D)&&D.code===CODE&&D.date!==t&&D.r.length&&!D.timeUp&&!D.done&&D.i<D.ids.length)rollover=D;
@@ -56,20 +70,22 @@ function init(){const t=ENG.today();let rollover=null;
  bindMix();
  if(rollover){postSession(rollover);return showRollover(rollover)}
  home()}
-function home(){clearInterval(tick);const left=MIX.length-D.i,timeLeft=fmt(Math.max(0,LIM-(D.used||0)));
+function home(){clearInterval(tick);const left=MIX.length-D.i,shut=pastClose();
  let primary;
  if(!MIX.length)primary=`<div class="card"><div class="q">ما في بطاقات جاهزة اليوم. ارجع بكرا.</div></div>`;
- else if(D.timeUp)primary=`<button class="btn done" onclick="timeUp()">خلص وقت الخلطة<small>${D.r.length} أجوبة · الوقت خلص</small></button>`;
- else if(!left)primary=`<button class="btn done" onclick="end()">✔ خلصت خلطة اليوم<small>${MIX.length} مهمّات · ${D.xp} XP</small></button>`;
- else primary=`<button class="btn" onclick="go()">${D.i?"▶ كمّل خلطة اليوم":"▶ ابدأ خلطة اليوم"}<small>${MIX.length} مهمّات · ${left} باقية · ${bdi(timeLeft)} من الوقت</small></button>`;
- $(`<div class="logo">DAILY MIX</div><div class="sub">خلطة اليوم · ${bdi(D.date)} · هدف 15 دقيقة</div><div class="city"></div>
+ else if(!left&&!D.timeUp&&!shut)primary=`<button class="btn done" onclick="end()">✔ خلصت خلطة اليوم<small>${MIX.length} مهمّات · ${D.xp} XP</small></button>`;
+ else if(D.timeUp||shut)primary=`<button class="btn done" onclick="timeUp()">سكّرت الساعة ${bdi("22:00")}<small>${D.r.length} أجوبة · خلطة اليوم سكّرت</small></button>`;
+ else primary=`<button class="btn" onclick="go()">${D.i?"▶ كمّل خلطة اليوم":"▶ ابدأ خلطة اليوم"}<small>${MIX.length} مهمّات · ${left} باقية · باقي ${bdi(fmtLeft(secsUntilClose()))}</small></button>`;
+ $(`<div class="logo">DAILY MIX</div><div class="sub">خلطة اليوم · ${bdi(D.date)} · بتسكر ${bdi("22:00")}</div><div class="city"></div>
  ${primary}
  <button class="btn" onclick="map()">🗺️ خريطة الإتقان<small>وين أنت من هدف ${bdi("90+")}</small></button>`)}
-function go(){if(D.timeUp)return timeUp();clearInterval(tick);
- tick=setInterval(()=>{if(document.hidden)return;D.used++;if(D.used%5==0)save();
-  const e=document.getElementById("tm");if(e)e.textContent=fmt(Math.max(0,LIM-D.used));
-  if(D.used>=LIM)timeUp()},1000);
- if((D.used||0)>=LIM)return timeUp();
+function go(){if(D.timeUp||pastClose())return timeUp();clearInterval(tick);
+ tick=setInterval(()=>{
+  if(pastClose())return timeUp();
+  if(document.hidden)return;
+  D.used++;if(D.used%5==0)save();
+  const e=document.getElementById("tm");if(e)e.textContent=fmtLeft(secsUntilClose());
+ },1000);
  show()}
 function xpAt(n){return Math.max(4,10-3*n)}
 function hintLabel(){const cost=xpAt(h)-xpAt(h+1);return cost?`تلميح · يخصم ${bdi(cost+" XP")}`:"تلميح"}
@@ -79,7 +95,7 @@ function entryNote(a){const s=String(a);const bits=[];
  if(s.includes("/"))bits.push("اكتب الكسر بشرطة، مثل "+bdi("3/4")+" أو "+bdi("1.75"));
  else if(s.includes(","))bits.push("اكتب الأرقام بفاصلة، مثل "+bdi("2,4"));
  return bits.join(" · ")}
-function show(){if(D.timeUp)return timeUp();
+function show(){if(D.timeUp||pastClose())return timeUp();
  while(D.i<MIX.length&&!ENG.playable(MIX[D.i]))D.i++;
  const it=MIX[D.i];if(!it)return end();
  h=0;done=false;window.t0=Date.now();
@@ -88,7 +104,7 @@ function renderCard(it){const d=it.ltr?"ltr":"";
  const answers=it.kind==="mc"
   ? it.o.map((o,i)=>`<button class="opt" id="o${i}" onclick="ans(${i})">${ENG.text(o)}</button>`).join("")
   : `<input class="inp" id="v" inputmode="${entryMode(it.a)}" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="الجواب" onkeydown="if(event.key==='Enter'){event.preventDefault();ans(this.value)}">${entryNote(it.a)?`<div class="note">${entryNote(it.a)}</div>`:""}<button class="btn" id="go" style="text-align:center" onclick="ans(document.getElementById('v').value)">تأكيد</button>`;
- $(`<div class="logo" style="font-size:20px">DAILY MIX · 15 MIN</div><div class="card"><div class="hud"><span>مهمّة ${bdi((D.i+1)+"/"+MIX.length)}</span><span>⏱️ <b id="tm" dir="ltr">${fmt(Math.max(0,LIM-(D.used||0)))}</b></span><bdi dir="ltr" id="xp">XP ${D.xp}</bdi></div><div class="bar"><i style="width:${MIX.length?100*D.i/MIX.length:0}%"></i></div>
+ $(`<div class="logo" style="font-size:20px">DAILY MIX · حتى 22:00</div><div class="card"><div class="hud"><span>مهمّة ${bdi((D.i+1)+"/"+MIX.length)}</span><span>⏱️ <b id="tm" dir="ltr">${fmtLeft(secsUntilClose())}</b></span><bdi dir="ltr" id="xp">XP ${D.xp}</bdi></div><div class="bar"><i style="width:${MIX.length?100*D.i/MIX.length:0}%"></i></div>
 <span class="tag">${SUB[it.subject]} · ${ENG.text(it.topic)}</span> <span class="tag" style="color:var(--gold);border-color:var(--gold)">${WHY[it.why]||""}</span>${it.ctx?`<div class="ctx ${d}">${ENG.text(it.ctx)}</div>`:""}<div class="q ${d}">${ENG.text(it.q)}</div>
 <div id="hs"></div>${it.hints&&it.hints.length?`<button class="hintbtn" id="hb" onclick="hint()">${hintLabel()}</button>`:""}
 <div class="${d}" id="answers">${answers}</div><div id="fb"></div><div class="src">المصدر: <bdi>${esc(it.source.file)} · ${esc(it.source.loc)}</bdi></div></div><button class="lnk" onclick="home()">↩ رجوع (التقدّم محفوظ)</button>`)}
@@ -115,10 +131,10 @@ function postSession(sess){if(!CFG.u||!CFG.k||!sess||sess.sent||!sess.r||!sess.r
 function send(){postSession(D)}
 function showRollover(old){const c=old.r.filter(x=>x.ok).length;
  $(`<div class="card"><div class="logo" style="font-size:20px">خلطة انقطعت</div><div class="sub">${bdi(old.date)}</div><div class="big">${Math.round(100*c/old.r.length)}%</div><div class="sub">${bdi(c)} من ${bdi(old.r.length)} صح · ${bdi((old.xp||0)+" XP")}</div><div class="sub">اليوم في خلطة جديدة</div><button class="btn" style="text-align:center" onclick="home()">يلا خلطة اليوم</button></div>`)}
-function timeUp(){clearInterval(tick);if(!D.timeUp){D.timeUp=1;D.used=Math.max(D.used||0,LIM);save();send()}
+function timeUp(){clearInterval(tick);if(!D.timeUp){D.timeUp=1;save();send()}
  const c=D.r.filter(x=>x.ok).length;
- const body=D.r.length?`<div class="big">${Math.round(100*c/D.r.length)}%</div><div class="sub">${bdi(c)} من ${bdi(D.r.length)} صح · ${bdi(D.xp+" XP")}</div><div class="sub">هذي من اللي جاوبته قبل ما يخلص الوقت</div>`:`<div class="q">خلص الوقت قبل أي جواب. بكرا في خلطة جديدة.</div>`;
- $(`<div class="card"><div class="logo" style="font-size:20px">خلص الوقت</div><div class="sub">هدف 15 دقيقة خلص</div>${body}<button class="btn" style="text-align:center" onclick="map()">🗺️ شوف خريطة الإتقان</button></div><button class="lnk" onclick="home()">↩ رجوع</button>`)}
+ const body=D.r.length?`<div class="big">${Math.round(100*c/D.r.length)}%</div><div class="sub">${bdi(c)} من ${bdi(D.r.length)} صح · ${bdi(D.xp+" XP")}</div><div class="sub">هذي من اللي جاوبته قبل ما تسكر الساعة ${bdi("22:00")}</div>`:`<div class="q">سكّرت الساعة ${bdi("22:00")} قبل أي جواب. بكرا في خلطة جديدة.</div>`;
+ $(`<div class="card"><div class="logo" style="font-size:20px">سكّرت الخلطة</div><div class="sub">الإغلاق الساعة ${bdi("22:00")} بتوقيت القدس</div>${body}<button class="btn" style="text-align:center" onclick="map()">🗺️ شوف خريطة الإتقان</button></div><button class="lnk" onclick="home()">↩ رجوع</button>`)}
 function end(){clearInterval(tick);if(!D.r.length)return home();D.done=1;save();send();
  const c=D.r.filter(x=>x.ok).length;
  $(`<div class="card"><div class="logo" style="font-size:20px">DAILY MIX · RESULT</div><div class="big">${Math.round(100*c/D.r.length)}%</div><div class="sub">${bdi(c)} من ${bdi(D.r.length)} صح · ${bdi(D.xp+" XP")} · ${bdi(fmt(D.used))}</div><button class="btn" style="text-align:center" onclick="map()">🗺️ شوف خريطة الإتقان</button><div class="sub">خلطة جديدة بكرا</div></div><button class="lnk" onclick="home()">↩ رجوع</button>`)}
